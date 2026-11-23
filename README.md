@@ -25,18 +25,18 @@
 ## 🚀 一键安装
 
 ```bash
-bash <(curl -Ls https://vip.shuijiao.li/install.sh)
+bash <(curl -Ls https://raw.githubusercontent.com/shui1iao/Emby-Reverse-Proxy/main/install.sh)
 ```
 
 运行后按提示输入：
 
 - 你的域名，例如 `emby.example.com`
-- 要反代的 Emby 地址，例如 `https://lite.cn2gias.uk:443`
+- 要反代的 Emby 地址，例如 `https://origin.example.com:443`
 
 也可以非交互运行：
 
 ```bash
-DOMAIN=emby.example.com UPSTREAM=https://lite.cn2gias.uk:443 bash <(curl -Ls https://vip.shuijiao.li/install.sh)
+DOMAIN=emby.example.com UPSTREAM=https://origin.example.com:443 bash <(curl -Ls https://raw.githubusercontent.com/shui1iao/Emby-Reverse-Proxy/main/install.sh)
 ```
 
 ---
@@ -126,16 +126,16 @@ certbot --nginx -d emby.example.com
 | 变量 | 说明 | 示例 |
 | --- | --- | --- |
 | `DOMAIN` | 你的访问域名 | `emby.example.com` |
-| `UPSTREAM` | 上游 Emby 地址 | `https://lite.cn2gias.uk:443` |
+| `UPSTREAM` | 上游 Emby 地址 | `https://origin.example.com:443` |
 | `PROXY_ENGINE` | 指定反代服务，可选 `auto` / `caddy` / `nginx` | `caddy` |
 
 示例：
 
 ```bash
 DOMAIN=emby.example.com \
-UPSTREAM=https://lite.cn2gias.uk:443 \
+UPSTREAM=https://origin.example.com:443 \
 PROXY_ENGINE=caddy \
-bash <(curl -Ls https://vip.shuijiao.li/install.sh)
+bash <(curl -Ls https://raw.githubusercontent.com/shui1iao/Emby-Reverse-Proxy/main/install.sh)
 ```
 
 ---

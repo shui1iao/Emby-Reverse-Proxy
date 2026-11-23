@@ -25,18 +25,18 @@ It can proxy another Emby server, your own backend, or an internal Emby instance
 ## Installation
 
 ```bash
-bash <(curl -Ls https://vip.shuijiao.li/install.sh)
+bash <(curl -Ls https://raw.githubusercontent.com/shui1iao/Emby-Reverse-Proxy/main/install.sh)
 ```
 
 You will be asked to enter:
 
 - Your domain, for example `emby.example.com`
-- The upstream Emby URL, for example `https://lite.cn2gias.uk:443`
+- The upstream Emby URL, for example `https://origin.example.com:443`
 
 Non-interactive example:
 
 ```bash
-DOMAIN=emby.example.com UPSTREAM=https://lite.cn2gias.uk:443 bash <(curl -Ls https://vip.shuijiao.li/install.sh)
+DOMAIN=emby.example.com UPSTREAM=https://origin.example.com:443 bash <(curl -Ls https://raw.githubusercontent.com/shui1iao/Emby-Reverse-Proxy/main/install.sh)
 ```
 
 ---
@@ -124,16 +124,16 @@ certbot --nginx -d emby.example.com
 | Variable | Description | Example |
 | --- | --- | --- |
 | `DOMAIN` | Public domain | `emby.example.com` |
-| `UPSTREAM` | Upstream Emby URL | `https://lite.cn2gias.uk:443` |
+| `UPSTREAM` | Upstream Emby URL | `https://origin.example.com:443` |
 | `PROXY_ENGINE` | Proxy engine: `auto`, `caddy`, or `nginx` | `caddy` |
 
 Example:
 
 ```bash
 DOMAIN=emby.example.com \
-UPSTREAM=https://lite.cn2gias.uk:443 \
+UPSTREAM=https://origin.example.com:443 \
 PROXY_ENGINE=caddy \
-bash <(curl -Ls https://vip.shuijiao.li/install.sh)
+bash <(curl -Ls https://raw.githubusercontent.com/shui1iao/Emby-Reverse-Proxy/main/install.sh)
 ```
 
 ---

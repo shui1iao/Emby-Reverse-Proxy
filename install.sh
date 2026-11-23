@@ -5,17 +5,44 @@ DEFAULT_DOMAIN="${DOMAIN:-}"
 DEFAULT_UPSTREAM="${UPSTREAM:-}"
 PROXY_ENGINE="${PROXY_ENGINE:-auto}" # auto|caddy|nginx
 
-if [ "$(id -u)" -ne 0 ]; then
-  echo "请用 root 运行：sudo bash $0"
-  exit 1
-fi
-
-log() { printf '\033[36m[Emby-Proxy]\033[0m %s\n' "$*"; }
-warn() { printf '\033[33m[提示]\033[0m %s\n' "$*"; }
+log() { printf '\033[36m[Emby-Proxy]\033[0m %s\n' "$*" >&2; }
+warn() { printf '\033[33m[提示]\033[0m %s\n' "$*" >&2; }
 fail() { printf '\033[31m[错误]\033[0m %s\n' "$*" >&2; exit 1; }
 
 need_cmd() {
   command -v "$1" >/dev/null 2>&1
+}
+
+validate_domain() {
+  local d="$1"
+  [[ -n "$d" && ${#d} -le 253 ]] || fail "域名无效：$d"
+  [[ "$d" =~ ^[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?(\.[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?)+$ ]] || fail "域名格式非法（仅允许标准域名）：$d"
+}
+
+normalize_upstream() {
+  local u="$1"
+  u="${u#"${u%%[![:space:]]*}"}"
+  u="${u%"${u##*[![:space:]]}"}"
+  if [[ ! "$u" =~ ^https?:// ]]; then
+    u="https://$u"
+  fi
+  [[ "$u" != *$'\n'* && "$u" != *$'\r'* && "$u" != *';'* && "$u" != *'{'* && "$u" != *'}'* && "$u" != *[[:space:]]* ]] || fail "上游地址包含非法字符：$u"
+  [[ "$u" =~ ^https?://(\[[0-9A-Fa-f:]+\]|[A-Za-z0-9._-]+)(:[0-9]{1,5})?(/.*)?$ ]] || fail "上游地址格式非法：$u"
+  printf '%s\n' "$u"
+}
+
+host_from_url() {
+  local u="$1"
+  u="${u#http://}"
+  u="${u#https://}"
+  u="${u%%/*}"
+  if [[ "$u" == \[* ]]; then
+    u="${u#\[}"
+    u="${u%%\]*}"
+  else
+    u="${u%%:*}"
+  fi
+  printf '%s\n' "$u"
 }
 
 ask() {
@@ -33,37 +60,20 @@ ask() {
   printf -v "$var_name" '%s' "$value"
 }
 
-normalize_upstream() {
-  local u="$1"
-  if [[ ! "$u" =~ ^https?:// ]]; then
-    u="https://$u"
-  fi
-  echo "$u"
-}
-
-host_from_url() {
-  local u="$1"
-  u="${u#http://}"
-  u="${u#https://}"
-  u="${u%%/*}"
-  u="${u%%:*}"
-  echo "$u"
-}
-
 install_caddy() {
   log "未检测到 Caddy/Nginx，安装 Caddy..."
   if need_cmd apt-get; then
     export DEBIAN_FRONTEND=noninteractive
-    apt-get update
-    apt-get install -y caddy
+    apt-get update >&2
+    apt-get install -y caddy >&2
   elif need_cmd dnf; then
-    dnf install -y 'dnf-command(copr)' || true
-    dnf copr enable -y @caddy/caddy || true
-    dnf install -y caddy
+    dnf install -y 'dnf-command(copr)' >&2 || true
+    dnf copr enable -y @caddy/caddy >&2 || true
+    dnf install -y caddy >&2
   elif need_cmd yum; then
-    yum install -y yum-plugin-copr || true
-    yum copr enable -y @caddy/caddy || true
-    yum install -y caddy
+    yum install -y yum-plugin-copr >&2 || true
+    yum copr enable -y @caddy/caddy >&2 || true
+    yum install -y caddy >&2
   else
     fail "未找到 apt/dnf/yum，无法自动安装 Caddy"
   fi
@@ -116,7 +126,7 @@ $domain {
 
     reverse_proxy $upstream {
         header_up Host $upstream_host
-        header_up X-Forwarded-Proto https
+        header_up X-Forwarded-Proto {scheme}
         header_up X-Real-IP {remote_host}
     }
 }
@@ -141,12 +151,19 @@ EOC
 write_nginx() {
   local domain="$1" upstream="$2" upstream_host="$3"
   local conf="/etc/nginx/conf.d/emby-${domain}.conf"
-  if [ ! -d /etc/nginx/conf.d ]; then
-    mkdir -p /etc/nginx/conf.d
+  local ssl_sni_lines=""
+  if [[ "$upstream" == https://* ]]; then
+    ssl_sni_lines=$'        proxy_ssl_server_name on;\n        proxy_ssl_name '"$upstream_host"$';'
   fi
+  mkdir -p /etc/nginx/conf.d
   [ -f "$conf" ] && cp -a "$conf" "$conf.bak-$(date +%Y%m%d%H%M%S)"
 
   cat > "$conf" <<EON
+map \$http_upgrade \$emby_connection_upgrade {
+    default upgrade;
+    ''      close;
+}
+
 server {
     listen 80;
     listen [::]:80;
@@ -158,13 +175,14 @@ server {
     location / {
         proxy_pass $upstream;
         proxy_http_version 1.1;
+$ssl_sni_lines
 
         proxy_set_header Host $upstream_host;
         proxy_set_header X-Real-IP \$remote_addr;
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto https;
+        proxy_set_header X-Forwarded-Proto \$scheme;
         proxy_set_header Upgrade \$http_upgrade;
-        proxy_set_header Connection "upgrade";
+        proxy_set_header Connection \$emby_connection_upgrade;
 
         proxy_read_timeout 3600s;
         proxy_send_timeout 3600s;
@@ -180,11 +198,17 @@ EON
 }
 
 main() {
+  if [ "$(id -u)" -ne 0 ]; then
+    echo "请用 root 运行：sudo bash $0" >&2
+    exit 1
+  fi
+
   ask DOMAIN_INPUT "请输入你自己的域名，例如 emby.example.com" "$DEFAULT_DOMAIN"
-  ask UPSTREAM_INPUT "请输入要反代的 Emby 地址，例如 https://lite.cn2gias.uk:443" "$DEFAULT_UPSTREAM"
+  ask UPSTREAM_INPUT "请输入要反代的 Emby 地址，例如 https://origin.example.com:443" "$DEFAULT_UPSTREAM"
 
   local domain upstream upstream_host engine ip
   domain="$DOMAIN_INPUT"
+  validate_domain "$domain"
   upstream=$(normalize_upstream "$UPSTREAM_INPUT")
   upstream_host=$(host_from_url "$upstream")
 
@@ -214,4 +238,6 @@ main() {
   warn "如果服务器 curl 返回 403，但浏览器能打开，通常是上游 WAF 对命令行请求的拦截，不一定代表反代失败。"
 }
 
-main "$@"
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+  main "$@"
+fi
